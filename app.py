@@ -101,6 +101,19 @@ with tab3:
     ds_name3 = st.radio("데이터셋 선택", options=["pre", "post"],
                          format_func=lambda x: du.DATASET_LABELS[x], horizontal=True, key="t3_ds")
     df3 = du.load_csv(ds_name3)
+
+    with st.expander("가중치(weight) 는 이렇게 처리했습니다 — 펼쳐서 보기"):
+        st.markdown(
+            "- `weight1`~`weight4` = **분기별 가중치**. 응답자는 자신이 응답한 분기 컬럼에만 값이 있고 "
+            "나머지 3개 분기는 결측입니다 (그래서 각 weight1~4는 항상 표본의 약 75%가 결측으로 보입니다 — 정상입니다).\n"
+            "- `weight` = **연간 통합 가중치**. 2023~2025년은 해당 분기의 weight1~4 값을, 2019년은 원자료의 가중치를 그대로 이어받은 값입니다. "
+            "이 대시보드의 모든 '가중' 통계는 **이 `weight` 컬럼만 사용**합니다 (weight1~4는 분기 단위 세부분석용이라 여기서는 사용하지 않습니다).\n"
+            "- **계산식**: 가중평균 = Σ(x·weight) / Σweight, 가중비율(%) = (카테고리별 weight 합) / (전체 weight 합) × 100.\n"
+            "- **비가중(표본) vs 가중(모집단추정) 이 왜 다른가**: 조사 표본설계상 국적별로 표본을 고르게 뽑지 않고(소규모 국가를 상대적으로 더 뽑는 식) "
+            "실제 방한객 규모에 맞춰 사후 보정한 게 `weight`입니다. 그래서 중국·일본처럼 실제 비중이 큰 국적은 표본비율보다 가중비율이 훨씬 높게 나옵니다 "
+            "— 즉 **모집단(실제 방한 외국인 전체) 추정치로 해석하려면 항상 가중값을 봐야 합니다.**"
+        )
+
     key_numeric = du.KEY_NUMERIC_PRE if ds_name3 == "pre" else du.KEY_NUMERIC_POST
     key_cat = list(du.KEY_CATEGORICAL)
     exclude = {"pnid", "weight", "weight1", "weight2", "weight3", "weight4"}
@@ -192,6 +205,25 @@ with tab3:
     st.subheader("3) 군집분석 — 체류일수 × 지출항목 (로그변환, K=4)")
     st.caption("입력변수: " + ", ".join(du.CLUSTER_FEATURES[ds_name3]) + " · log(1+x) 변환 후 표준화 → K-means(K=4, 가중치는 알고리즘에 미반영, 해석 시에만 가중비율 병기)")
 
+    with st.expander("군집분석은 어떻게, 왜 이렇게 했나요? — 펼쳐서 보기"):
+        st.markdown(
+            "**입력변수**: 체류일수(M일HAP) + 주요 지출항목(위 '입력변수' 참고). 지출 세부 20여 개 항목 중 "
+            "0값이 압도적으로 많은 소액/희소 항목은 빼고, 지출 구조를 대표하는 주요 항목만 선택했습니다.\n\n"
+            "**왜 로그변환을 했나**: 지출액은 오른쪽으로 크게 치우친 분포입니다(소수의 초고액 지출자가 존재). "
+            "원 단위로 그대로 군집분석에 넣으면 이 극단값들이 '거리' 계산을 지배해서 대부분의 평범한 응답자가 "
+            "제대로 구분되지 않습니다. `log(1+x)`로 압축한 뒤 평균 0·분산 1로 표준화해야 모든 변수가 "
+            "비슷한 스케일로 군집 형성에 기여합니다.\n\n"
+            "**K=4는 왜**: 사용자가 지정한 고정값입니다(요청 시 4개로 진행). 최적 K를 찾는 통계적 절차(엘보우/실루엣)를 "
+            "거친 값이 아니라는 점은 참고해주세요.\n\n"
+            "**가중치는 어떻게 반영했나**: K-means 알고리즘 자체는 표본 간 기하학적 거리로 군집을 나누는 기법이라 "
+            "설문 가중치를 직접 반영하는 표준적인 방법이 없습니다. 그래서 **군집을 나누는 계산에는 가중치를 쓰지 않고**, "
+            "그 대신 각 군집이 실제 모집단에서 차지하는 비중을 알 수 있도록 **결과 표에 가중비율(%)을 별도로 병기**했습니다.\n\n"
+            "**각 군집이 '무엇'인지는 미리 정해진 게 아닙니다** — K-means는 그냥 비슷한 응답자끼리 4개 그룹으로 묶을 뿐, "
+            "'단기형', '장기 고지출형' 같은 이름은 없습니다. 아래 표의 평균 체류일수·평균 총지출·주요 국적·주요 방한목적을 "
+            "보고 **사람이 사후적으로 해석**하는 것이며, `특징` 컬럼은 그 해석을 돕기 위해 전체 평균 대비 체류일수·지출 수준을 "
+            "자동으로 요약한 것입니다."
+        )
+
     @st.cache_data(show_spinner="군집분석(K=4) 계산 중...")
     def compute_clusters(name: str):
         d = du.load_csv(name)
@@ -213,9 +245,10 @@ with tab3:
         pca = PCA(n_components=2, random_state=42)
         coords = pca.fit_transform(Xs)
         sub["pc1"], sub["pc2"] = coords[:, 0], coords[:, 1]
-        return sub, feats, mok_col, gub_col
+        loadings = pd.DataFrame(pca.components_.T, index=feats, columns=["PC1", "PC2"]).round(2)
+        return sub, feats, mok_col, gub_col, pca.explained_variance_ratio_, loadings
 
-    sub, feats, mok_col, gub_col = compute_clusters(ds_name3)
+    sub, feats, mok_col, gub_col, explained_var, loadings = compute_clusters(ds_name3)
 
     size_tbl = sub.groupby("cluster").agg(표본수=("weight", "size"), 가중치합=("weight", "sum"),
                                            평균체류일수=("M일HAP", "mean"), 평균총지출=("총액1인TOT2", "mean"))
@@ -233,11 +266,35 @@ with tab3:
     size_tbl["주요 국적"] = top_nat
     size_tbl["주요 방한목적"] = top_mok
     size_tbl = size_tbl.drop(columns=["가중치합"])
+
+    day_med, spend_med = size_tbl["평균체류일수"].median(), size_tbl["평균총지출"].median()
+    def _label(row):
+        day_tag = "장기" if row["평균체류일수"] >= day_med else "단기"
+        spend_tag = "고지출" if row["평균총지출"] >= spend_med else "저지출"
+        return f"{day_tag}·{spend_tag}"
+    size_tbl["특징(자동요약)"] = size_tbl.apply(_label, axis=1)
     st.dataframe(size_tbl, use_container_width=True)
 
     profile = sub.groupby("cluster")[feats].mean().round(1)
     st.markdown("**군집별 평균 프로파일 (원 단위, 로그변환 이전 값)**")
     st.dataframe(profile, use_container_width=True)
+
+    with st.expander("PCA 산점도는 무엇을 보여주나요? PC1·PC2가 뭔가요? — 펼쳐서 보기"):
+        st.markdown(
+            f"군집분석은 실제로는 {len(feats)}개 변수(고차원 공간)에서 이루어지지만, 사람이 눈으로 확인할 수 있도록 "
+            "**PCA(주성분분석)로 정보 손실을 최소화하면서 2개의 축(PC1, PC2)에 압축 투영**한 것이 아래 산점도입니다.\n\n"
+            "- **PC1, PC2는 원 변수 하나하나가 아니라, 여러 변수를 섞은 합성축(가중합)**입니다. 예를 들어 PC1이 "
+            "'전체적인 지출·체류 규모'와, PC2가 '지출 항목의 구성(예: 쇼핑 중심 vs 숙박 중심)'과 관련될 수 있는데, "
+            "정확히 무엇과 관련되는지는 아래 '변수별 기여도(loading)' 표의 절댓값이 큰 변수로 판단합니다.\n"
+            f"- 이 두 축이 원래 {len(feats)}개 변수가 가진 정보(분산)의 **{explained_var.sum()*100:.1f}%**를 담고 있습니다"
+            f" (PC1 {explained_var[0]*100:.1f}%, PC2 {explained_var[1]*100:.1f}%). 100%가 아니므로 2D 그림은 "
+            "'근사적인 요약'이지 원 데이터 그대로는 아닙니다.\n\n"
+            "**이 그림으로 알 수 있는 것**: ① 군집(색)들이 평면에서 잘 갈라져 보이면 군집 구분이 뚜렷하다는 뜻이고, "
+            "서로 겹쳐 보이면 그 두 군집은 실제로도 특성이 비슷하다는 뜻입니다. ② 점들이 서로 가까울수록 "
+            "체류·지출 패턴이 비슷한 응답자라는 뜻입니다."
+        )
+        st.markdown("**변수별 기여도(loading)** — 절댓값이 클수록 해당 축(PC1/PC2)에 그 변수가 많이 반영됨")
+        st.dataframe(loadings, use_container_width=True)
 
     sample = sub.sample(min(5000, len(sub)), random_state=42)
     fig_pca = go.Figure()
@@ -246,7 +303,9 @@ with tab3:
         s = sample[sample["cluster"] == c]
         fig_pca.add_trace(go.Scatter(x=s["pc1"], y=s["pc2"], mode="markers", name=f"군집 {c}",
                                       marker=dict(size=5, color=colors[c % 4], opacity=0.5)))
-    fig_pca.update_layout(height=460, xaxis_title="PC1", yaxis_title="PC2",
+    fig_pca.update_layout(height=460,
+                           xaxis_title=f"PC1 (분산의 {explained_var[0]*100:.1f}% 설명)",
+                           yaxis_title=f"PC2 (분산의 {explained_var[1]*100:.1f}% 설명)",
                            legend=dict(orientation="h", y=1.1))
     st.plotly_chart(fig_pca, use_container_width=True)
     st.caption("PCA 2차원 투영 시각화 (5,000건 샘플)")
