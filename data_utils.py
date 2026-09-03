@@ -119,6 +119,57 @@ def load_diff_sheets():
     return diff, rename_overview, full_compare
 
 
+@st.cache_data(show_spinner="pre/post 공통 변수 값 체계 비교 중...")
+def compare_common_vars() -> pd.DataFrame:
+    """pre_covid / post_covid에 공통으로 존재하는 변수들의 실제 값(코드/범위)이 서로 같은지 데이터로 직접 비교."""
+    pre = load_csv("pre")
+    post = load_csv("post")
+    common = sorted((set(pre.columns) & set(post.columns)) - {"pnid"})
+
+    rows = []
+    for c in common:
+        s_pre, s_post = pre[c], post[c]
+        dtype_pre, dtype_post = str(s_pre.dtype), str(s_post.dtype)
+        vals_pre = set(s_pre.dropna().unique().tolist())
+        vals_post = set(s_post.dropna().unique().tolist())
+        is_cat = len(vals_pre) <= 30 and len(vals_post) <= 30
+
+        row = {
+            "변수명": c,
+            "dtype_pre": dtype_pre,
+            "dtype_post": dtype_post,
+            "고유값수_pre": len(vals_pre),
+            "고유값수_post": len(vals_post),
+        }
+        if is_cat:
+            only_pre = sorted(vals_pre - vals_post)
+            only_post = sorted(vals_post - vals_pre)
+            row["범주형"] = True
+            row["pre에만 있는 코드"] = ", ".join(map(str, only_pre)) if only_pre else ""
+            row["post에만 있는 코드"] = ", ".join(map(str, only_post)) if only_post else ""
+            row["코드 체계 다름"] = bool(only_pre or only_post)
+            row["범위_pre"] = ""
+            row["범위_post"] = ""
+        else:
+            row["범주형"] = False
+            row["pre에만 있는 코드"] = ""
+            row["post에만 있는 코드"] = ""
+            try:
+                row["범위_pre"] = f"{s_pre.min():.1f} ~ {s_pre.max():.1f}"
+                row["범위_post"] = f"{s_post.min():.1f} ~ {s_post.max():.1f}"
+            except (TypeError, ValueError):
+                row["범위_pre"] = row["범위_post"] = ""
+            row["코드 체계 다름"] = None
+        row["dtype 다름"] = dtype_pre != dtype_post
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    cols = ["변수명", "범주형", "dtype_pre", "dtype_post", "dtype 다름",
+            "고유값수_pre", "고유값수_post", "코드 체계 다름",
+            "pre에만 있는 코드", "post에만 있는 코드", "범위_pre", "범위_post"]
+    return df[cols]
+
+
 def get_var_desc(var: str, desc_map: dict, dtype_map: dict):
     d = desc_map.get(var)
     t = dtype_map.get(var)

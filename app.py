@@ -80,19 +80,34 @@ with tab2:
             st.write(sorted(post_only))
 
     st.markdown("---")
-    st.subheader("연도(2023~2025) 통합 과정에서 제외/변경된 변수")
-    st.caption("코드북 워크북(1_codebook_항목정의서_비교.xlsx)의 '데이터별 차이' / '변수명 변경(개요)' 시트 기준")
-    diff_df, rename_df, full_compare_df = du.load_diff_sheets()
+    st.subheader("공통 변수의 값/코드 체계가 실제로 같은가?")
+    st.caption("이름은 같지만 코드 정의가 다르면 pre/post를 그대로 이어붙여 분석할 때 오류가 생깁니다. 두 파일을 직접 읽어 비교했습니다.")
 
-    excluded = diff_df[diff_df.iloc[:, 7].notna()] if diff_df.shape[1] > 7 else diff_df
-    st.markdown("**제외/처리 사유가 명시된 변수**")
-    st.dataframe(excluded, use_container_width=True, height=280)
+    cmp_df = du.compare_common_vars()
+    n_dtype_diff = int(cmp_df["dtype 다름"].sum())
+    n_code_diff = int((cmp_df["코드 체계 다름"] == True).sum())  # noqa: E712
 
-    st.markdown("**연도별 변수명 변경 이력**")
-    st.dataframe(rename_df, use_container_width=True, height=280)
+    m1, m2, m3 = st.columns(3)
+    m1.metric("비교한 공통 변수", len(cmp_df))
+    m2.metric("dtype이 다른 변수", n_dtype_diff)
+    m3.metric("코드값 체계가 다른 범주형 변수", n_code_diff)
 
-    with st.expander("전체 변수 연도별 존재/일치 여부 (전체_비교 시트)"):
-        st.dataframe(full_compare_df, use_container_width=True, height=400)
+    only_diff = st.checkbox("차이 나는 변수만 보기", value=True)
+    show_df = cmp_df
+    if only_diff:
+        show_df = cmp_df[(cmp_df["dtype 다름"]) | (cmp_df["코드 체계 다름"] == True)]  # noqa: E712
+    st.dataframe(show_df, use_container_width=True, height=420)
+    st.caption(
+        "'코드 체계 다름'은 범주형 변수(고유값 30개 이하)에서 한쪽 파일에만 등장하는 코드가 있다는 뜻입니다. "
+        "범주형이 아닌 연속형 변수는 코드 비교 대신 값 범위(범위_pre/post)로 비교했습니다."
+    )
+
+    with st.expander("(참고) 2023~2025 통합 시 KTO 코드북 처리 메모 — 잘 안 쓰지만 남겨둠"):
+        diff_df, rename_df, full_compare_df = du.load_diff_sheets()
+        st.markdown("**제외/처리 사유가 명시된 변수** (2023~2025 내부 통합 과정, pre/post 비교와는 무관)")
+        st.dataframe(diff_df, use_container_width=True, height=240)
+        st.markdown("**연도별 변수명 변경 이력**")
+        st.dataframe(rename_df, use_container_width=True, height=240)
 
 # ============================================================
 # TAB 3. 변수 탐색
