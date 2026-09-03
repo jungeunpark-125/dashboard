@@ -102,8 +102,14 @@ with tab3:
                          format_func=lambda x: du.DATASET_LABELS[x], horizontal=True, key="t3_ds")
     df3 = du.load_csv(ds_name3)
     key_numeric = du.KEY_NUMERIC_PRE if ds_name3 == "pre" else du.KEY_NUMERIC_POST
-    priority = [c for c in du.KEY_CATEGORICAL + key_numeric if c in df3.columns]
-    other_cols = [c for c in df3.columns if c not in priority and c not in ("pnid", "weight", "weight1", "weight2", "weight3", "weight4")]
+    key_cat = list(du.KEY_CATEGORICAL)
+    exclude = {"pnid", "weight", "weight1", "weight2", "weight3", "weight4"}
+    # Q1과 D_MOK는 동일 변수의 중복(설문 원문항명 vs 표준화된 설계변수명) -> D_MOK가 있으면 Q1은 목록에서 숨김
+    if "D_MOK" in df3.columns and "Q1" in df3.columns:
+        key_cat = [c for c in key_cat if c != "Q1"]
+        exclude.add("Q1")
+    priority = [c for c in key_cat + key_numeric if c in df3.columns]
+    other_cols = [c for c in df3.columns if c not in priority and c not in exclude]
     all_ordered = priority + sorted(other_cols)
 
     st.subheader("1) 변수별 분포 탐색")
