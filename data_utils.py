@@ -11,8 +11,8 @@ DATASET_PATHS = {
     "post": os.path.join(BASE_DIR, "data", "post_covid.csv"),
 }
 DATASET_LABELS = {
-    "pre": "pre_covid (2019 + 2023~2025)",
-    "post": "post_covid (2023~2025)",
+    "pre": "pre_covid (2019 + 2023–2025)",
+    "post": "post_covid (2023–2025)",
 }
 CODEBOOK_PATH = os.path.join(BASE_DIR, "codebook", "1_codebook_항목정의서_비교.xlsx")
 CODEVALUE_PATH = os.path.join(BASE_DIR, "codebook", "2_코드값_연도비교_작업물.xlsx")
@@ -109,6 +109,12 @@ def load_code_labels():
             code_key = code
         labels.setdefault(var, {})[code_key] = str(label).strip()
     return labels
+
+
+@st.cache_data(show_spinner=False)
+def load_rename_history() -> pd.DataFrame:
+    """2023~2025 사이 변수명이 바뀐 이력 (코드북 워크북 '변수명 변경(개요)' 시트)."""
+    return pd.read_excel(CODEBOOK_PATH, sheet_name="변수명 변경(개요)")
 
 
 @st.cache_data(show_spinner="pre/post 공통 변수 값 체계 비교 중...")
