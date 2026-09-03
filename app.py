@@ -102,13 +102,6 @@ with tab2:
         "범주형이 아닌 연속형 변수는 코드 비교 대신 값 범위(범위_pre/post)로 비교했습니다."
     )
 
-    with st.expander("(참고) 2023~2025 통합 시 KTO 코드북 처리 메모 — 잘 안 쓰지만 남겨둠"):
-        diff_df, rename_df, full_compare_df = du.load_diff_sheets()
-        st.markdown("**제외/처리 사유가 명시된 변수** (2023~2025 내부 통합 과정, pre/post 비교와는 무관)")
-        st.dataframe(diff_df, use_container_width=True, height=240)
-        st.markdown("**연도별 변수명 변경 이력**")
-        st.dataframe(rename_df, use_container_width=True, height=240)
-
 # ============================================================
 # TAB 3. 변수 탐색
 # ============================================================

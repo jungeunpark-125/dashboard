@@ -111,14 +111,6 @@ def load_code_labels():
     return labels
 
 
-@st.cache_data(show_spinner=False)
-def load_diff_sheets():
-    diff = pd.read_excel(CODEBOOK_PATH, sheet_name="데이터별 차이")
-    rename_overview = pd.read_excel(CODEBOOK_PATH, sheet_name="변수명 변경(개요)")
-    full_compare = pd.read_excel(CODEBOOK_PATH, sheet_name="전체_비교")
-    return diff, rename_overview, full_compare
-
-
 @st.cache_data(show_spinner="pre/post 공통 변수 값 체계 비교 중...")
 def compare_common_vars() -> pd.DataFrame:
     """pre_covid / post_covid에 공통으로 존재하는 변수들의 실제 값(코드/범위)이 서로 같은지 데이터로 직접 비교."""
