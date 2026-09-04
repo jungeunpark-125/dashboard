@@ -3,9 +3,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 
 import data_utils as du
 
@@ -205,8 +202,92 @@ with tab3:
         )
 
     st.markdown("---")
-    st.subheader("2) 지출항목 간 상관관계")
-    corr_feats = [c for c in du.CLUSTER_FEATURES[ds_name3] if c != "M일HAP" and c in df3.columns]
+    st.subheader("2) 연도별 추이 — " + var)
+    years_available = sorted(df3["survey_year"].dropna().unique())
+    if var == "survey_year":
+        st.caption("survey_year 자체는 연도별 추이 대상이 아닙니다. 다른 변수를 선택해주세요.")
+    elif len(years_available) < 2:
+        st.caption("이 데이터셋은 연도가 1개뿐이라 추이를 볼 수 없습니다.")
+    elif categorical:
+        tmp = df3[[var, "survey_year", "weight"]].copy()
+        tmp["_label"] = tmp[var].map(label_map).fillna(tmp[var].astype(str)) if label_map else tmp[var].astype(str)
+        top_cats = tmp.groupby("_label")["weight"].sum().sort_values(ascending=False).head(8).index
+        tmp["_label"] = tmp["_label"].where(tmp["_label"].isin(top_cats), "기타")
+        pivot = tmp.groupby(["survey_year", "_label"])["weight"].sum().unstack(fill_value=0)
+        pivot_pct = (pivot.div(pivot.sum(axis=1), axis=0) * 100).round(1)
+        fig_trend = go.Figure()
+        for col in pivot_pct.columns:
+            fig_trend.add_trace(go.Scatter(x=pivot_pct.index.astype(str), y=pivot_pct[col],
+                                            mode="lines+markers", name=str(col)))
+        fig_trend.update_layout(height=380, yaxis_title="가중비율(%)", legend=dict(orientation="h", y=1.15))
+        st.plotly_chart(fig_trend, use_container_width=True)
+        st.caption("가중치 적용, 비중 상위 8개 범주 외에는 '기타'로 묶었습니다.")
+    else:
+        tmp = df3[[var, "survey_year", "weight"]].dropna(subset=[var])
+        trend = tmp.groupby("survey_year").apply(lambda d: du.weighted_mean(d[var], d["weight"])).round(1)
+        fig_trend = go.Figure()
+        fig_trend.add_trace(go.Scatter(x=trend.index.astype(str), y=trend.values, mode="lines+markers",
+                                        line=dict(color="#2a78d6", width=2), marker=dict(size=8)))
+        fig_trend.update_layout(height=340, yaxis_title=f"가중평균 {var}")
+        st.plotly_chart(fig_trend, use_container_width=True)
+        st.caption("가중평균 기준 연도별 추이입니다.")
+
+    st.markdown("---")
+    st.subheader("3) 두 변수 교차표")
+    cat_vars_all = [c for c in all_ordered if du.is_categorical(df3[c])]
+    cc1, cc2, cc3 = st.columns([1, 1, 1])
+    with cc1:
+        var_a = st.selectbox("변수 A (행)", cat_vars_all, index=0, key="cross_a")
+    with cc2:
+        remaining_b = [c for c in cat_vars_all if c != var_a]
+        default_b = remaining_b.index("D_MOK") if "D_MOK" in remaining_b else (remaining_b.index("Q1") if "Q1" in remaining_b else 0)
+        var_b = st.selectbox("변수 B (열)", remaining_b, index=default_b, key="cross_b")
+    with cc3:
+        weighted_cross = st.checkbox("가중치 적용", value=True, key="cross_w")
+
+    label_a = du.get_labels_for(var_a, LABEL_MAP)
+    label_b = du.get_labels_for(var_b, LABEL_MAP)
+    tmp_cross = df3[[var_a, var_b, "weight"]].copy()
+    tmp_cross["_a"] = tmp_cross[var_a].map(label_a).fillna(tmp_cross[var_a].astype(str)) if label_a else tmp_cross[var_a].astype(str)
+    tmp_cross["_b"] = tmp_cross[var_b].map(label_b).fillna(tmp_cross[var_b].astype(str)) if label_b else tmp_cross[var_b].astype(str)
+
+    if weighted_cross:
+        cross = tmp_cross.pivot_table(index="_a", columns="_b", values="weight", aggfunc="sum", fill_value=0)
+    else:
+        cross = pd.crosstab(tmp_cross["_a"], tmp_cross["_b"])
+    cross_pct = (cross.div(cross.sum(axis=1), axis=0) * 100).round(1)
+
+    st.markdown(f"**교차표** ({'가중추정치' if weighted_cross else '표본수'})")
+    st.dataframe(cross.round(0) if weighted_cross else cross, use_container_width=True)
+    st.markdown("**행(변수 A) 기준 비율(%)** — 각 행 내에서 변수 B의 분포")
+    st.dataframe(cross_pct, use_container_width=True)
+
+    chart_rows = cross_pct if len(cross_pct) <= 12 else cross_pct.loc[cross.sum(axis=1).sort_values(ascending=False).head(12).index]
+    fig_cross = go.Figure()
+    for col in chart_rows.columns:
+        fig_cross.add_bar(name=str(col), x=chart_rows.index.astype(str), y=chart_rows[col])
+    fig_cross.update_layout(barmode="stack", height=420, yaxis_title="비율(%)", legend=dict(orientation="h", y=1.15))
+    st.plotly_chart(fig_cross, use_container_width=True)
+    if len(cross_pct) > 12:
+        st.caption("그래프는 표본수 상위 12개 행만 표시했습니다 (표에는 전체 포함).")
+
+    st.markdown("---")
+    st.subheader("4) 지역별 방문 요약 (숙박 기준)")
+    region_df = du.region_visit_summary(ds_name3)
+    weighted_region = st.checkbox("가중 방문율 기준으로 보기", value=True, key="region_w")
+    sort_col = "가중 방문율(%)" if weighted_region else "비가중 방문율(%)"
+    region_sorted = region_df.sort_values(sort_col, ascending=False)
+    fig_region = go.Figure()
+    fig_region.add_bar(x=region_sorted[sort_col], y=region_sorted["지역"], orientation="h", marker_color="#4a3aa7")
+    fig_region.update_layout(height=max(320, len(region_sorted) * 26), xaxis_title="방문율(%)",
+                              yaxis=dict(autorange="reversed"))
+    st.plotly_chart(fig_region, use_container_width=True)
+    st.dataframe(region_sorted, use_container_width=True)
+    st.caption("숙박 기준 방문율입니다 (해당 지역 박TOT > 0인 응답자 비율). 당일 방문(일TOT)은 포함하지 않았습니다.")
+
+    st.markdown("---")
+    st.subheader("5) 지출항목 간 상관관계")
+    corr_feats = [c for c in du.EXPENDITURE_ITEMS[ds_name3] if c in df3.columns]
     log_corr = st.checkbox("로그(1+x) 변환 후 상관계수 계산", value=True)
     corr_data = df3[corr_feats].fillna(0)
     if log_corr:
@@ -219,121 +300,15 @@ with tab3:
     st.plotly_chart(fig_corr, use_container_width=True)
 
     st.markdown("---")
-    st.subheader("3) 군집분석 — 체류일수 × 지출항목 (로그변환, K=4)")
-    st.caption("입력변수: " + ", ".join(du.CLUSTER_FEATURES[ds_name3]) + " · log(1+x) 변환 후 표준화 → K-means(K=4, 가중치는 알고리즘에 미반영, 해석 시에만 가중비율 병기)")
-
-    with st.expander("군집분석은 어떻게, 왜 이렇게 했나요? — 펼쳐서 보기"):
-        st.markdown(
-            "**입력변수**: 체류일수(M일HAP) + 주요 지출항목(위 '입력변수' 참고). 지출 세부 20여 개 항목 중 "
-            "0값이 압도적으로 많은 소액/희소 항목은 빼고, 지출 구조를 대표하는 주요 항목만 선택했습니다.\n\n"
-            "**왜 로그변환을 했나**: 지출액은 오른쪽으로 크게 치우친 분포입니다(소수의 초고액 지출자가 존재). "
-            "원 단위로 그대로 군집분석에 넣으면 이 극단값들이 '거리' 계산을 지배해서 대부분의 평범한 응답자가 "
-            "제대로 구분되지 않습니다. `log(1+x)`로 압축한 뒤 평균 0·분산 1로 표준화해야 모든 변수가 "
-            "비슷한 스케일로 군집 형성에 기여합니다.\n\n"
-            "**K=4는 왜**: 사용자가 지정한 고정값입니다(요청 시 4개로 진행). 최적 K를 찾는 통계적 절차(엘보우/실루엣)를 "
-            "거친 값이 아니라는 점은 참고해주세요.\n\n"
-            "**가중치는 어떻게 반영했나**: K-means 알고리즘 자체는 표본 간 기하학적 거리로 군집을 나누는 기법이라 "
-            "설문 가중치를 직접 반영하는 표준적인 방법이 없습니다. 그래서 **군집을 나누는 계산에는 가중치를 쓰지 않고**, "
-            "그 대신 각 군집이 실제 모집단에서 차지하는 비중을 알 수 있도록 **결과 표에 가중비율(%)을 별도로 병기**했습니다.\n\n"
-            "**각 군집이 '무엇'인지는 미리 정해진 게 아닙니다** — K-means는 그냥 비슷한 응답자끼리 4개 그룹으로 묶을 뿐, "
-            "'단기형', '장기 고지출형' 같은 이름은 없습니다. 아래 표의 평균 체류일수·평균 총지출·주요 국적·주요 방한목적을 "
-            "보고 **사람이 사후적으로 해석**하는 것이며, `특징` 컬럼은 그 해석을 돕기 위해 전체 평균 대비 체류일수·지출 수준을 "
-            "자동으로 요약한 것입니다."
-        )
-
-    @st.cache_data(show_spinner="군집분석(K=4) 계산 중...")
-    def compute_clusters(name: str):
-        d = du.load_csv(name)
-        feats = du.CLUSTER_FEATURES[name]
-        spend_feats = [f for f in feats if f != "M일HAP"]
-        sub = d[feats + ["weight", "D_NAT"]].copy()
-        mok_col = "D_MOK" if "D_MOK" in d.columns else "Q1"
-        gub_col = "D_GUB" if "D_GUB" in d.columns else "TYP"
-        sub[mok_col] = d[mok_col]
-        sub[gub_col] = d[gub_col]
-        sub["총액1인TOT2"] = d["총액1인TOT2"]
-        sub[spend_feats] = sub[spend_feats].fillna(0)
-        sub = sub.dropna(subset=["M일HAP", "weight"])
-
-        X = np.log1p(sub[feats].clip(lower=0))
-        Xs = StandardScaler().fit_transform(X)
-        km = KMeans(n_clusters=4, random_state=42, n_init=10)
-        sub["cluster"] = km.fit_predict(Xs)
-        pca = PCA(n_components=2, random_state=42)
-        coords = pca.fit_transform(Xs)
-        sub["pc1"], sub["pc2"] = coords[:, 0], coords[:, 1]
-        loadings = pd.DataFrame(pca.components_.T, index=feats, columns=["PC1", "PC2"]).round(2)
-        return sub, feats, mok_col, gub_col, pca.explained_variance_ratio_, loadings
-
-    sub, feats, mok_col, gub_col, explained_var, loadings = compute_clusters(ds_name3)
-
-    size_tbl = sub.groupby("cluster").agg(표본수=("weight", "size"), 가중치합=("weight", "sum"),
-                                           평균체류일수=("M일HAP", "mean"), 평균총지출=("총액1인TOT2", "mean"))
-    size_tbl["가중비율(%)"] = (size_tbl["가중치합"] / size_tbl["가중치합"].sum() * 100).round(1)
-    size_tbl["평균체류일수"] = size_tbl["평균체류일수"].round(1)
-    size_tbl["평균총지출"] = size_tbl["평균총지출"].round(0)
-
-    nat_labels_map = du.get_labels_for("D_NAT", LABEL_MAP)
-    sub["_nat_label"] = sub["D_NAT"].map(nat_labels_map).fillna(sub["D_NAT"].astype(str))
-    top_nat = sub.groupby("cluster")["_nat_label"].agg(lambda s: s.value_counts().idxmax())
-    mok_labels_map = du.get_labels_for(mok_col, LABEL_MAP)
-    sub["_mok_label"] = sub[mok_col].map(mok_labels_map).fillna(sub[mok_col].astype(str))
-    top_mok = sub.groupby("cluster")["_mok_label"].agg(lambda s: s.value_counts().idxmax())
-
-    size_tbl["주요 국적"] = top_nat
-    size_tbl["주요 방한목적"] = top_mok
-    size_tbl = size_tbl.drop(columns=["가중치합"])
-
-    day_med, spend_med = size_tbl["평균체류일수"].median(), size_tbl["평균총지출"].median()
-    def _label(row):
-        day_tag = "장기" if row["평균체류일수"] >= day_med else "단기"
-        spend_tag = "고지출" if row["평균총지출"] >= spend_med else "저지출"
-        return f"{day_tag}·{spend_tag}"
-    size_tbl["특징(자동요약)"] = size_tbl.apply(_label, axis=1)
-    st.dataframe(size_tbl, use_container_width=True)
-
-    profile = sub.groupby("cluster")[feats].mean().round(1)
-    st.markdown("**군집별 평균 프로파일 (원 단위, 로그변환 이전 값)**")
-    st.dataframe(profile, use_container_width=True)
-
-    with st.expander("PCA 산점도는 무엇을 보여주나요? PC1·PC2가 뭔가요? — 펼쳐서 보기"):
-        st.markdown(
-            f"군집분석은 실제로는 {len(feats)}개 변수(고차원 공간)에서 이루어지지만, 사람이 눈으로 확인할 수 있도록 "
-            "**PCA(주성분분석)로 정보 손실을 최소화하면서 2개의 축(PC1, PC2)에 압축 투영**한 것이 아래 산점도입니다.\n\n"
-            "- **PC1, PC2는 원 변수 하나하나가 아니라, 여러 변수를 섞은 합성축(가중합)**입니다. 예를 들어 PC1이 "
-            "'전체적인 지출·체류 규모'와, PC2가 '지출 항목의 구성(예: 쇼핑 중심 vs 숙박 중심)'과 관련될 수 있는데, "
-            "정확히 무엇과 관련되는지는 아래 '변수별 기여도(loading)' 표의 절댓값이 큰 변수로 판단합니다.\n"
-            f"- 이 두 축이 원래 {len(feats)}개 변수가 가진 정보(분산)의 **{explained_var.sum()*100:.1f}%**를 담고 있습니다"
-            f" (PC1 {explained_var[0]*100:.1f}%, PC2 {explained_var[1]*100:.1f}%). 100%가 아니므로 2D 그림은 "
-            "'근사적인 요약'이지 원 데이터 그대로는 아닙니다.\n\n"
-            "**이 그림으로 알 수 있는 것**: ① 군집(색)들이 평면에서 잘 갈라져 보이면 군집 구분이 뚜렷하다는 뜻이고, "
-            "서로 겹쳐 보이면 그 두 군집은 실제로도 특성이 비슷하다는 뜻입니다. ② 점들이 서로 가까울수록 "
-            "체류·지출 패턴이 비슷한 응답자라는 뜻입니다."
-        )
-        st.markdown("**변수별 기여도(loading)** — 절댓값이 클수록 해당 축(PC1/PC2)에 그 변수가 많이 반영됨")
-        st.dataframe(loadings, use_container_width=True)
-
-    sample = sub.sample(min(5000, len(sub)), random_state=42)
-    fig_pca = go.Figure()
-    colors = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
-    for c in sorted(sample["cluster"].unique()):
-        s = sample[sample["cluster"] == c]
-        fig_pca.add_trace(go.Scatter(x=s["pc1"], y=s["pc2"], mode="markers", name=f"군집 {c}",
-                                      marker=dict(size=5, color=colors[c % 4], opacity=0.5)))
-    fig_pca.update_layout(height=460,
-                           xaxis_title=f"PC1 (분산의 {explained_var[0]*100:.1f}% 설명)",
-                           yaxis_title=f"PC2 (분산의 {explained_var[1]*100:.1f}% 설명)",
-                           legend=dict(orientation="h", y=1.1))
-    st.plotly_chart(fig_pca, use_container_width=True)
-    st.caption("PCA 2차원 투영 시각화 (5,000건 샘플)")
-
-    gub_labels_map = du.get_labels_for(gub_col, LABEL_MAP)
-    sub["_gub_label"] = sub[gub_col].map(gub_labels_map).fillna(sub[gub_col].astype(str))
-    cross = pd.crosstab(sub["cluster"], sub["_gub_label"], normalize="index") * 100
-    fig_cross = go.Figure()
-    for col in cross.columns:
-        fig_cross.add_bar(name=str(col), x=[f"군집 {i}" for i in cross.index], y=cross[col].round(1))
-    fig_cross.update_layout(barmode="stack", height=360, yaxis_title="비율(%)",
-                             legend=dict(orientation="h", y=1.15))
-    st.plotly_chart(fig_cross, use_container_width=True)
-    st.caption("군집별 여행형태 구성비")
+    st.subheader("6) 결측치 현황")
+    miss = df3.isna().sum().to_frame("결측수")
+    miss["결측비율(%)"] = (miss["결측수"] / len(df3) * 100).round(2)
+    miss = miss.sort_values("결측비율(%)", ascending=False)
+    only_missing = st.checkbox("결측 있는 변수만 보기", value=True, key="miss_only")
+    show_miss = miss[miss["결측수"] > 0] if only_missing else miss
+    st.dataframe(show_miss, use_container_width=True, height=380)
+    st.caption(
+        f"전체 {df3.shape[1]}개 변수 중 결측이 있는 변수: {(miss['결측수'] > 0).sum()}개. "
+        "지역별 방문 변수처럼 '해당 없음'이 결측으로 기록된 구조적 결측이 많습니다 "
+        "(그런 변수는 분석 시 0으로 채워야 하는 경우가 많으니 주의하세요)."
+    )

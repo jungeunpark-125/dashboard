@@ -46,12 +46,15 @@ KEY_NUMERIC_POST = ["총액1인TOT2", "총액1인TOT_개별국제교통비제외
                      "문화서1인대체", "오락및1인대체", "치료및1인대체", "미용서1인대체", "가이드1인대체",
                      "대여서1인대체", "유류비1인대체", "데이터1인대체", "기타비1인대체"]
 
-# 군집분석 입력 변수 (체류일수 + 주요 지출항목, 데이터셋별)
-CLUSTER_FEATURES = {
-    "pre": ["M일HAP", "식음료비_합계", "현지교통비_합계", "문화오락_합계", "기타_합계", "한국여행사지불비_합계"],
-    "post": ["M일HAP", "숙박비1인대체", "음식점1인대체", "식음료1인대체", "쇼핑비1인대체",
+# 지출항목 상관관계에 쓰는 주요 지출항목 (데이터셋별)
+EXPENDITURE_ITEMS = {
+    "pre": ["식음료비_합계", "현지교통비_합계", "문화오락_합계", "기타_합계", "한국여행사지불비_합계"],
+    "post": ["숙박비1인대체", "음식점1인대체", "식음료1인대체", "쇼핑비1인대체",
              "여행사1인대체", "문화서1인대체", "오락및1인대체", "치료및1인대체", "미용서1인대체", "기타비1인대체"],
 }
+
+REGIONS = ["서울", "경기", "인천", "강원", "대전", "충북", "충남", "세종", "경북", "경남",
+           "대구", "울산", "부산", "광주", "전북", "전남", "제주"]
 
 
 @st.cache_data(show_spinner="데이터 불러오는 중...")
@@ -166,6 +169,27 @@ def compare_common_vars() -> pd.DataFrame:
             "고유값수_pre", "고유값수_post", "코드 체계 다름",
             "pre에만 있는 코드", "post에만 있는 코드", "범위_pre", "범위_post"]
     return df[cols]
+
+
+@st.cache_data(show_spinner="지역별 방문 통계 계산 중...")
+def region_visit_summary(name: str) -> pd.DataFrame:
+    """지역별 숙박(박TOT>0) 방문율/평균 숙박일수 (비가중·가중)."""
+    df = load_csv(name)
+    w = df["weight"]
+    rows = []
+    for r in REGIONS:
+        col = f"{r}박TOT"
+        if col not in df.columns:
+            continue
+        visited = df[col].fillna(0) > 0
+        rows.append({
+            "지역": r,
+            "방문자수(비가중)": int(visited.sum()),
+            "비가중 방문율(%)": round(visited.mean() * 100, 1),
+            "가중 방문율(%)": round(np.average(visited.astype(float), weights=w) * 100, 1),
+            "평균 숙박일수(방문자중)": round(df.loc[visited, col].mean(), 1) if visited.sum() else None,
+        })
+    return pd.DataFrame(rows)
 
 
 def get_var_desc(var: str, desc_map: dict, dtype_map: dict):
