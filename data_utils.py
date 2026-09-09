@@ -20,6 +20,10 @@ CODEVALUE_PATH = os.path.join(BASE_DIR, "codebook", "2_코드값_연도비교_�
 # Q1(원문항)과 D_MOK(정제변수)은 동일 코드체계 사용 -> 라벨 조회 시 별칭 처리
 LABEL_ALIAS = {"Q1": "D_MOK"}
 
+# 코드값 워크북에서 이 변수들의 라벨은 엑셀 원본에 글자 사이 공백이 채워진 채로
+# 저장돼 있음 (예: "중              국") -> 공백을 전부 제거해서 정상 표기로 복원
+SPREAD_LABEL_VARS = {"D_SEX", "D_AGE", "D_NAT", "D_NAT2", "D_NUM", "D_GUB", "D_MOK", "D_BUN"}
+
 # pre_covid.csv에서 2019 통합 과정 중 설명형으로 재명명된 활동 더미 변수(코드북 미수록분) 수동 보강
 MANUAL_DESC = {
     "식도락관광": ("문8. 참여한 활동(식도락 관광) - 참여여부 더미", "코드형"),
@@ -110,7 +114,8 @@ def load_code_labels():
             code_key = int(code_f) if code_f.is_integer() else code_f
         except (ValueError, TypeError):
             code_key = code
-        labels.setdefault(var, {})[code_key] = str(label).strip()
+        label_str = "".join(str(label).split()) if var in SPREAD_LABEL_VARS else str(label).strip()
+        labels.setdefault(var, {})[code_key] = label_str
     return labels
 
 

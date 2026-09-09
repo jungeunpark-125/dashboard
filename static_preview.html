@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>방한 외국인 관광객 실태조사 대시보드 — 정적 미리보기</title>
+<style>
+  :root {
+    --bg: #0e1117; --surface: #161b22; --surface2: #1c2129; --border: #2a303c;
+    --text: #e6e6e6; --text2: #9aa4b2; --accent: #2a78d6; --accent2: #eb6834;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#ffffff; --surface:#f7f8fa; --surface2:#eef0f3; --border:#dde1e6; --text:#111318; --text2:#5b6472; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; line-height:1.5; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 26px; font-weight: 600; margin: 0 0 6px; }
+  .sub { color: var(--text2); font-size: 14px; margin-bottom: 20px; }
+  .banner { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; font-size: 13px; color: var(--text2); margin-bottom: 28px; }
+  .banner b { color: var(--text); }
+  section { margin-bottom: 40px; }
+  h2 { font-size: 18px; font-weight: 600; margin: 0 0 4px; padding-top: 20px; border-top: 1px solid var(--border); }
+  h2:first-child { border-top: none; padding-top: 0; }
+  .desc { color: var(--text2); font-size: 13px; margin-bottom: 16px; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; margin-bottom: 16px; }
+  .metric { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .metric .label { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .metric .value { font-size: 22px; font-weight: 600; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+  .chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; position: relative; height: 300px; }
+  .chart-box.tall { height: 380px; }
+  .legend { display:flex; gap:14px; font-size:12px; color:var(--text2); margin-bottom:8px; flex-wrap:wrap; }
+  .legend span { display:inline-flex; align-items:center; gap:5px; }
+  .dot { width:9px; height:9px; border-radius:2px; display:inline-block; }
+  table { width:100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text2); font-weight: 500; }
+  .heat-cell { text-align:center; font-variant-numeric: tabular-nums; }
+  footer { color: var(--text2); font-size: 12px; margin-top: 40px; border-top:1px solid var(--border); padding-top:16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>방한 외국인 관광객 실태조사 대시보드</h1>
+  <div class="sub">정적 미리보기 — Streamlit 서버 없이 보는 스냅샷</div>
+  <div class="banner">
+    이 페이지는 <b>미리보기 전용 정적 스냅샷</b>입니다. 실제 원자료(pre_covid.csv / post_covid.csv)는 포함돼 있지 않고,
+    아래 수치는 데이터 생성 시점에 미리 계산해 넣은 값이라 <b>실시간으로 바뀌지 않습니다</b>.
+    변수 선택·교차표·연도별 추이 등을 직접 조작하려면 <code>streamlit run app.py</code>로 실행하는 실제 대시보드를 사용하세요.
+  </div>
+
+  <section>
+    <h2>PreCovid / PostCovid 개요</h2>
+    <div class="metrics">
+      <div class="metric"><div class="label">pre_covid 표본수 · 변수수</div><div class="value" id="m-pre"></div></div>
+      <div class="metric"><div class="label">post_covid 표본수 · 변수수</div><div class="value" id="m-post"></div></div>
+      <div class="metric"><div class="label">공통 변수</div><div class="value" id="m-common"></div></div>
+      <div class="metric"><div class="label">코드체계 다른 변수</div><div class="value" id="m-codediff"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>인구통계 분포 (post_covid, 가중 기준)</h2>
+    <div class="desc">국적·연령·성별·방한목적·여행형태 — 비가중(표본) vs 가중(모집단추정)</div>
+    <div class="grid2">
+      <div class="chart-box"><canvas id="c-nat"></canvas></div>
+      <div class="chart-box"><canvas id="c-age"></canvas></div>
+    </div>
+    <div class="grid2" style="margin-top:24px;">
+      <div class="chart-box"><canvas id="c-mok"></canvas></div>
+      <div class="chart-box"><canvas id="c-gub"></canvas></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>지역별 방문 요약 (숙박 기준, 가중)</h2>
+    <div class="chart-box tall"><canvas id="c-region"></canvas></div>
+  </section>
+
+  <section>
+    <h2>두 변수 교차표 예시 — 국적(상위6) × 방한목적 (%, 가중)</h2>
+    <div id="cross-table"></div>
+  </section>
+
+  <section>
+    <h2>지출항목 간 상관관계 (post_covid, 로그변환)</h2>
+    <div id="corr-table"></div>
+  </section>
+
+  <section>
+    <h2>연도별 추이 (pre_covid, 가중평균)</h2>
+    <div class="grid2">
+      <div class="chart-box"><canvas id="c-trend-spend"></canvas></div>
+      <div class="chart-box"><canvas id="c-trend-days"></canvas></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>결측치 상위 15개 변수 (post_covid)</h2>
+    <div class="desc">대부분 특정 세부문항 답변자만 값이 있는 구조적 결측입니다.</div>
+    <div id="missing-table"></div>
+  </section>
+
+  <footer>방한 외국인 관광객조사(KTO) 마이크로데이터 기반 · dashboard/app.py의 정적 스냅샷</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const DATA = {
+ "tab2": {
+  "common": 227,
+  "pre_only": 20,
+  "post_only": 194,
+  "dtype_diff": 2,
+  "code_diff": 24
+ },
+ "demo": {
+  "nat": {
+   "labels": [
+    "중국",
+    "일본",
+    "대만",
+    "미국",
+    "홍콩",
+    "기타",
+    "싱가포르",
+    "태국",
+    "베트남",
+    "말레이시아"
+   ],
+   "uw": [
+    12.46,
+    12.24,
+    8.07,
+    7.81,
+    5.2,
+    4.82,
+    4.5,
+    4.18,
+    4.15,
+    3.77
+   ],
+   "w": [
+    25.92,
+    22.04,
+    9.95,
+    8.12,
+    3.76,
+    6.3,
+    2.46,
+    2.27,
+    3.12,
+    1.91
+   ]
+  },
+  "age": {
+   "labels": [
+    "20대",
+    "30대",
+    "40대",
+    "50대",
+    "60대이상",
+    "15-19세"
+   ],
+   "uw": [
+    32.46,
+    26.25,
+    17.46,
+    16.32,
+    5.19,
+    2.33
+   ],
+   "w": [
+    30.9,
+    24.74,
+    16.83,
+    18.61,
+    6.63,
+    2.29
+   ]
+  },
+  "sex": {
+   "labels": [
+    "여성",
+    "남성"
+   ],
+   "uw": [
+    57.74,
+    42.26
+   ],
+   "w": [
+    61.01,
+    38.99
+   ]
+  },
+  "mok": {
+   "labels": [
+    "여가/위락/휴식",
+    "사업/전문활동",
+    "친구/친지방문",
+    "교육",
+    "기타"
+   ],
+   "uw": [
+    62.54,
+    19.38,
+    12.82,
+    4.07,
+    1.18
+   ],
+   "w": [
+    67.62,
+    15.98,
+    11.65,
+    3.89,
+    0.87
+   ]
+  },
+  "gub": {
+   "labels": [
+    "개별여행",
+    "단체여행",
+    "AIR-TEL"
+   ],
+   "uw": [
+    84.47,
+    10.96,
+    4.57
+   ],
+   "w": [
+    81.21,
+    11.09,
+    7.7
+   ]
+  }
+ },
+ "region": {
+  "labels": [
+   "서울",
+   "부산",
+   "제주",
+   "경기",
+   "인천",
+   "강원",
+   "경북",
+   "경남",
+   "대구",
+   "전북",
+   "대전",
+   "울산",
+   "충남",
+   "전남",
+   "충북",
+   "광주",
+   "세종"
+  ],
+  "pct": [
+   74.8,
+   15.6,
+   9.4,
+   6.3,
+   4.9,
+   1.9,
+   1.7,
+   1.5,
+   1.4,
+   1.1,
+   0.9,
+   0.8,
+   0.7,
+   0.7,
+   0.6,
+   0.6,
+   0.2
+  ]
+ },
+ "corr": {
+  "labels": [
+   "숙박비1인대체",
+   "음식점1인대체",
+   "식음료1인대체",
+   "쇼핑비1인대체",
+   "여행사1인대체",
+   "문화서1인대체",
+   "오락및1인대체",
+   "치료및1인대체",
+   "미용서1인대체",
+   "기타비1인대체"
+  ],
+  "matrix": [
+   [
+    1.0,
+    0.5,
+    0.04,
+    -0.09,
+    -0.67,
+    0.21,
+    0.1,
+    0.0,
+    -0.0,
+    -0.04
+   ],
+   [
+    0.5,
+    1.0,
+    0.15,
+    0.03,
+    -0.53,
+    0.21,
+    0.13,
+    0.05,
+    0.06,
+    -0.07
+   ],
+   [
+    0.04,
+    0.15,
+    1.0,
+    0.06,
+    -0.09,
+    0.11,
+    0.04,
+    0.0,
+    -0.01,
+    -0.05
+   ],
+   [
+    -0.09,
+    0.03,
+    0.06,
+    1.0,
+    0.1,
+    0.09,
+    0.05,
+    0.06,
+    0.1,
+    0.01
+   ],
+   [
+    -0.67,
+    -0.53,
+    -0.09,
+    0.1,
+    1.0,
+    -0.17,
+    -0.09,
+    -0.05,
+    -0.01,
+    -0.0
+   ],
+   [
+    0.21,
+    0.21,
+    0.11,
+    0.09,
+    -0.17,
+    1.0,
+    0.17,
+    -0.04,
+    0.03,
+    -0.04
+   ],
+   [
+    0.1,
+    0.13,
+    0.04,
+    0.05,
+    -0.09,
+    0.17,
+    1.0,
+    -0.01,
+    0.01,
+    -0.01
+   ],
+   [
+    0.0,
+    0.05,
+    0.0,
+    0.06,
+    -0.05,
+    -0.04,
+    -0.01,
+    1.0,
+    0.07,
+    0.01
+   ],
+   [
+    -0.0,
+    0.06,
+    -0.01,
+    0.1,
+    -0.01,
+    0.03,
+    0.01,
+    0.07,
+    1.0,
+    -0.01
+   ],
+   [
+    -0.04,
+    -0.07,
+    -0.05,
+    0.01,
+    -0.0,
+    -0.04,
+    -0.01,
+    0.01,
+    -0.01,
+    1.0
+   ]
+  ]
+ },
+ "trend": {
+  "spend": {
+   "years": [
+    "2019",
+    "2023",
+    "2024",
+    "2025"
+   ],
+   "vals": [
+    1666.5,
+    2152.1,
+    1877.4,
+    1802.3
+   ]
+  },
+  "days": {
+   "years": [
+    "2019",
+    "2023",
+    "2024",
+    "2025"
+   ],
+   "vals": [
+    6.7,
+    9.5,
+    8.3,
+    7.7
+   ]
+  }
+ },
+ "cross": {
+  "rows": [
+   "중국",
+   "일본",
+   "대만",
+   "미국",
+   "기타",
+   "홍콩"
+  ],
+  "cols": [
+   "교육",
+   "기타",
+   "사업/전문활동",
+   "여가/위락/휴식",
+   "친구/친지방문"
+  ],
+  "matrix": [
+   [
+    7.1,
+    0.7,
+    10.9,
+    71.2,
+    10.1
+   ],
+   [
+    1.2,
+    0.5,
+    12.3,
+    74.7,
+    11.3
+   ],
+   [
+    1.5,
+    0.2,
+    7.4,
+    87.0,
+    3.9
+   ],
+   [
+    3.3,
+    1.2,
+    28.9,
+    45.0,
+    21.6
+   ],
+   [
+    4.8,
+    1.8,
+    28.2,
+    53.3,
+    12.0
+   ],
+   [
+    1.5,
+    0.8,
+    8.5,
+    83.4,
+    5.8
+   ]
+  ]
+ },
+ "missing": {
+  "labels": [
+   "Q2_3b3e",
+   "Q2_3b3b",
+   "Q2_3a3et",
+   "Q2_3a3dt",
+   "Q2_3b2d",
+   "Q2_3b3c",
+   "Q2_3b2e",
+   "Q2_3b3d",
+   "Q2_3a2et",
+   "Q2_3b2c",
+   "Q9_1_5",
+   "Q2_3a3ct",
+   "WQ9_5a08",
+   "Q2_3a3bt",
+   "Q2_3a2dt"
+  ],
+  "pct": [
+   100.0,
+   100.0,
+   100.0,
+   100.0,
+   100.0,
+   100.0,
+   100.0,
+   100.0,
+   99.9,
+   99.9,
+   99.9,
+   99.9,
+   99.8,
+   99.8,
+   99.8
+  ]
+ },
+ "meta": {
+  "pre_n": 64398,
+  "pre_cols": 247,
+  "post_n": 48522,
+  "post_cols": 421
+ }
+};
+
+const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+const textColor = isDark ? '#9aa4b2' : '#5b6472';
+const gridColor = isDark ? '#2a303c' : '#dde1e6';
+Chart.defaults.color = textColor;
+Chart.defaults.borderColor = gridColor;
+Chart.defaults.font.family = "-apple-system, 'Apple SD Gothic Neo', sans-serif";
+
+document.getElementById('m-pre').textContent = DATA.meta.pre_n.toLocaleString() + '행 · ' + DATA.meta.pre_cols + '개';
+document.getElementById('m-post').textContent = DATA.meta.post_n.toLocaleString() + '행 · ' + DATA.meta.post_cols + '개';
+document.getElementById('m-common').textContent = DATA.tab2.common + '개';
+document.getElementById('m-codediff').textContent = DATA.tab2.code_diff + '개';
+
+function barChart(id, labels, uw, w, horizontal) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets: [
+      { label: '비가중(표본) %', data: uw, backgroundColor: '#2a78d6' },
+      { label: '가중(모집단추정) %', data: w, backgroundColor: '#eb6834' },
+    ]},
+    options: {
+      indexAxis: horizontal ? 'y' : 'x',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11 } } } },
+      scales: { x: { grid: { display: !horizontal } }, y: { grid: { display: horizontal } } }
+    }
+  });
+}
+barChart('c-nat', DATA.demo.nat.labels, DATA.demo.nat.uw, DATA.demo.nat.w, false);
+barChart('c-age', DATA.demo.age.labels, DATA.demo.age.uw, DATA.demo.age.w, false);
+barChart('c-mok', DATA.demo.mok.labels, DATA.demo.mok.uw, DATA.demo.mok.w, true);
+barChart('c-gub', DATA.demo.gub.labels, DATA.demo.gub.uw, DATA.demo.gub.w, true);
+
+new Chart(document.getElementById('c-region'), {
+  type: 'bar',
+  data: { labels: DATA.region.labels, datasets: [{ data: DATA.region.pct, backgroundColor: '#4a3aa7' }] },
+  options: {
+    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: { x: { title: { display: true, text: '방문율(%)' } } }
+  }
+});
+
+new Chart(document.getElementById('c-trend-spend'), {
+  type: 'line',
+  data: { labels: DATA.trend.spend.years, datasets: [{ label: '1인당 총지출($)', data: DATA.trend.spend.vals,
+    borderColor: '#2a78d6', backgroundColor: 'rgba(42,120,214,0.1)', fill: true, tension: 0.3, pointRadius: 5 }] },
+  options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+});
+new Chart(document.getElementById('c-trend-days'), {
+  type: 'line',
+  data: { labels: DATA.trend.days.years, datasets: [{ label: '평균 체류일수', data: DATA.trend.days.vals,
+    borderColor: '#1baf7a', backgroundColor: 'rgba(27,175,122,0.1)', fill: true, tension: 0.3, pointRadius: 5 }] },
+  options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+});
+
+function heatColor(v) {
+  const t = Math.max(-1, Math.min(1, v));
+  if (t >= 0) { const a = t; return `rgba(42,120,214,${0.12 + a*0.55})`; }
+  const a = -t; return `rgba(235,104,52,${0.12 + a*0.55})`;
+}
+function renderMatrix(containerId, rowLabels, colLabels, matrix, rowHeader) {
+  let html = '<div style="overflow-x:auto"><table><thead><tr><th>' + rowHeader + '</th>';
+  colLabels.forEach(c => html += `<th>${c}</th>`);
+  html += '</tr></thead><tbody>';
+  rowLabels.forEach((r, i) => {
+    html += `<tr><td>${r}</td>`;
+    matrix[i].forEach(v => {
+      html += `<td class="heat-cell" style="background:${heatColor(v)}">${v.toFixed(2).replace('-0.00','0.00')}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  document.getElementById(containerId).innerHTML = html;
+}
+renderMatrix('corr-table', DATA.corr.labels, DATA.corr.labels, DATA.corr.matrix, '지출항목');
+renderMatrix('cross-table', DATA.cross.rows, DATA.cross.cols, DATA.cross.matrix, '국적 \\ 방한목적');
+
+let missHtml = '<table><thead><tr><th>변수명</th><th>결측비율(%)</th></tr></thead><tbody>';
+DATA.missing.labels.forEach((l, i) => {
+  missHtml += `<tr><td>${l}</td><td>${DATA.missing.pct[i]}%</td></tr>`;
+});
+missHtml += '</tbody></table>';
+document.getElementById('missing-table').innerHTML = missHtml;
+</script>
+</body>
+</html>
