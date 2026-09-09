@@ -11,6 +11,18 @@ st.set_page_config(page_title="외래관광객조사 대시보드", layout="wide
 DESC_MAP, DTYPE_MAP = du.load_codebook()
 LABEL_MAP = du.load_code_labels()
 
+
+def var_label(v: str, max_len: int = 28) -> str:
+    """드롭다운에 '변수명 — 변수설명' 형태로 표시하기 위한 라벨."""
+    desc, _ = du.get_var_desc(v, DESC_MAP, DTYPE_MAP)
+    if not desc:
+        return v
+    desc = desc.replace("~", "-")
+    if len(desc) > max_len:
+        desc = desc[:max_len] + "…"
+    return f"{v} — {desc}"
+
+
 st.title("방한 외국인 관광객 실태조사 대시보드")
 
 tab1, tab2, tab3 = st.tabs(["데이터 원본", "PreCovid / PostCovid 비교", "변수 탐색"])
@@ -34,7 +46,7 @@ with tab1:
         sel_nat_labels = st.multiselect("국적 필터 (미선택 시 전체)", nat_options)
     with col_f3:
         default_cols = [c for c in du.KEY_CATEGORICAL + (du.KEY_NUMERIC_PRE if ds_name == "pre" else du.KEY_NUMERIC_POST) if c in df.columns]
-        sel_cols = st.multiselect("표시할 변수", options=list(df.columns), default=default_cols[:12])
+        sel_cols = st.multiselect("표시할 변수", options=list(df.columns), default=default_cols[:12], format_func=var_label)
 
     view = df[df["survey_year"].isin(sel_years)] if sel_years else df
     if sel_nat_labels and nat_labels:
@@ -159,7 +171,7 @@ with tab3:
     all_ordered = priority + sorted(other_cols)
 
     st.subheader("1) 변수별 분포 탐색")
-    var = st.selectbox("변수 선택", all_ordered, index=0)
+    var = st.selectbox("변수 선택", all_ordered, index=0, format_func=var_label)
 
     desc, dtype = du.get_var_desc(var, DESC_MAP, DTYPE_MAP)
     label_map = du.get_labels_for(var, LABEL_MAP)
@@ -257,11 +269,11 @@ with tab3:
     cat_vars_all = [c for c in all_ordered if du.is_categorical(df3[c])]
     cc1, cc2, cc3 = st.columns([1, 1, 1])
     with cc1:
-        var_a = st.selectbox("변수 A (행)", cat_vars_all, index=0, key="cross_a")
+        var_a = st.selectbox("변수 A (행)", cat_vars_all, index=0, key="cross_a", format_func=var_label)
     with cc2:
         remaining_b = [c for c in cat_vars_all if c != var_a]
         default_b = remaining_b.index("D_MOK") if "D_MOK" in remaining_b else (remaining_b.index("Q1") if "Q1" in remaining_b else 0)
-        var_b = st.selectbox("변수 B (열)", remaining_b, index=default_b, key="cross_b")
+        var_b = st.selectbox("변수 B (열)", remaining_b, index=default_b, key="cross_b", format_func=var_label)
     with cc3:
         weighted_cross = st.checkbox("가중치 적용", value=True, key="cross_w")
 

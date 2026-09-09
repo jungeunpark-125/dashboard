@@ -84,7 +84,11 @@ def load_codebook():
         v = row.get("변수명")
         if pd.isna(v):
             continue
-        desc[v] = row.get("변수설명")
+        d = row.get("변수설명")
+        # 설계변수(D_ 접두사)는 원본에 "▩ 국 가 별 ▩"처럼 장식기호+스프레드 공백으로 저장돼 있음 -> 정리
+        if v in SPREAD_LABEL_VARS and isinstance(d, str):
+            d = "".join(d.replace("▩", "").split())
+        desc[v] = d
         dtype[v] = row.get("데이터형태")
     for k, (d, t) in MANUAL_DESC.items():
         desc[k] = d
